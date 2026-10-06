@@ -1438,6 +1438,10 @@ struct SampledForm {
     hull: Polygon,
 }
 
+/// How far outside an outline a packet's arrival flood may sit and still
+/// enter it: the port it reaches sits on its target's edge.
+const FLOOD_REACH: f32 = 12.0;
+
 /// Light cast by something that moves. A reflection lights only the edges it
 /// nears (a packet gathering, flying, and landing, or a drawing beam's bead); a
 /// pool also enters a card's glass (the ember left at a port, the flood where a
@@ -1451,6 +1455,10 @@ struct Light {
     radius: f32,
     pool: bool,
     scale: f32,
+    /// How far (in pixels) from an outline it may still enter it. A packet's
+    /// flood enters only the element whose port it reached, not a neighbour
+    /// whose edge sits a few pixels across the gap.
+    reach: f32,
 }
 
 impl Light {
@@ -2287,6 +2295,7 @@ impl Scene<'_> {
                 radius: REFLECTION_RADIUS * 0.8,
                 pool: false,
                 scale: place.scale,
+                reach: f32::INFINITY,
             });
         }
     }
@@ -2315,6 +2324,7 @@ impl Scene<'_> {
                     radius: radius * 4.4,
                     pool: false,
                     scale: place.scale,
+                    reach: f32::INFINITY,
                 });
             }
             StageElement::Beam { id, tone, .. } => {
@@ -2338,6 +2348,7 @@ impl Scene<'_> {
                         radius: 150.0,
                         pool: true,
                         scale: link.scale_at(1.0),
+                        reach: f32::INFINITY,
                     });
                 }
             }
@@ -2360,6 +2371,7 @@ impl Scene<'_> {
                     radius: form.radius * 4.4,
                     pool: false,
                     scale: place.scale,
+                    reach: f32::INFINITY,
                 });
             }
             StageElement::Packet {
@@ -2399,6 +2411,7 @@ impl Scene<'_> {
                             radius,
                             pool,
                             scale,
+                            reach: f32::INFINITY,
                         });
                     }
                 };
@@ -2455,6 +2468,7 @@ impl Scene<'_> {
                             radius: REFLECTION_RADIUS,
                             pool: false,
                             scale: place.scale,
+                            reach: f32::INFINITY,
                         });
                     }
                 }
@@ -2518,6 +2532,7 @@ impl Scene<'_> {
                     radius,
                     pool,
                     scale: link.scale_at(fraction),
+                    reach: f32::INFINITY,
                 });
             }
         };
@@ -2534,9 +2549,10 @@ impl Scene<'_> {
         }
         // An ember glows where it left, seeping outward as it cools.
         let t = age / packet::EMBER;
-        if t < 1.0 {
+        let ember = self.unit(id, "ember");
+        if t < 1.0 && ember > 0.0 {
             let spread = (0.1 + 0.7 * t.sqrt()) * 210.0 * DIAGRAM_SCALE;
-            let core = 0.6 * (t / 0.04).min(1.0) * (1.0 - t).powf(0.9);
+            let core = 0.6 * ember * (t / 0.04).min(1.0) * (1.0 - t).powf(0.9);
             cast(0.0, core, spread, true);
         }
         // Light floods into whatever it reached, spreading and fading.
@@ -2546,8 +2562,23 @@ impl Scene<'_> {
                 let travel = 1.0 - (1.0 - t).powi(4);
                 let width = 0.07 + 0.6 * travel.sqrt();
                 let fade = (-0.9 * t).exp() * (1.0 - smoothstep((t - 0.65) / 0.35));
-                let strength = 1.4 * smoothstep(t / 0.07) * (0.12 / (0.12 + width)).sqrt() * fade;
-                cast(1.0, strength, width * 300.0 * DIAGRAM_SCALE, true);
+                let strength = 1.4
+                    * self.unit(id, "flood")
+                    * smoothstep(t / 0.07)
+                    * (0.12 / (0.12 + width)).sqrt()
+                    * fade;
+                // Pushed directly, not cast: it enters only what it reached.
+                if strength * opacity > 0.01 {
+                    lights.push(Light {
+                        at: link.path.at(1.0),
+                        tone,
+                        strength: strength * opacity,
+                        radius: width * 300.0 * DIAGRAM_SCALE,
+                        pool: true,
+                        scale: link.scale_at(1.0),
+                        reach: FLOOD_REACH * link.scale_at(1.0),
+                    });
+                }
             }
         }
     }
@@ -2556,7 +2587,10 @@ impl Scene<'_> {
     fn lights_on(&self, outline: Shape) -> impl Iterator<Item = &Light> + '_ {
         self.lights
             .iter()
-            .filter(move |light| outline.distance(light.at) < light.radius * light.scale)
+            .filter(move |light| {
+                let distance = outline.distance(light.at);
+                distance < light.radius * light.scale && distance <= light.reach
+            })
     }
 }
 

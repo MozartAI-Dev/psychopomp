@@ -1056,7 +1056,7 @@ impl StageElement {
             Self::Beam { .. } => &[
                 "opacity", "sweep", "port", "draw", "break", "flow", "emphasis", "surge", "twang",
             ],
-            Self::Packet { .. } => &["opacity", "age", "flight"],
+            Self::Packet { .. } => &["opacity", "age", "flight", "ember", "flood"],
             Self::Label { .. } => &["opacity", "x", "y", "z", "scale", "typed"],
             Self::Ring { .. } => &["opacity", "x", "y", "z", "scale", "sweep", "expand"],
             Self::Bolt { .. } => &["opacity", "age", "seed", "hum"],
@@ -1146,7 +1146,15 @@ impl StageElement {
                 ("surge", 0.0),
                 ("twang", 0.0),
             ],
-            Self::Packet { .. } => &[("opacity", 1.0), ("age", -1.0), ("flight", 0.8)],
+            // `ember` and `flood` scale the light a packet leaves at its start
+            // port and pours into what it reaches; zero keeps that end dark.
+            Self::Packet { .. } => &[
+                ("opacity", 1.0),
+                ("age", -1.0),
+                ("flight", 0.8),
+                ("ember", 1.0),
+                ("flood", 1.0),
+            ],
             Self::Label { .. } => &[
                 ("opacity", 1.0),
                 ("x", 0.0),
