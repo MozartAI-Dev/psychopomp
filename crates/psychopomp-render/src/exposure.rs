@@ -25,6 +25,19 @@ pub(crate) const SHUTTER_SECONDS: f64 = SHUTTER_ANGLE as f64 / 360.0 / FPS as f6
 /// The fewest samples a reel frame takes while its segments mix or move.
 pub(crate) const TRANSITION_TEMPORAL_SAMPLES: u32 = 16;
 
+/// Caps a frame's shutter samples at `PSYCHOPOMP_MAX_SAMPLES` when it is set,
+/// for draft renders: render time scales with samples, and a full-quality film
+/// costs about twelve minutes per minute. Final renders leave it unset.
+pub(crate) fn draft_capped_samples(samples: u32) -> u32 {
+    match std::env::var("PSYCHOPOMP_MAX_SAMPLES")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+    {
+        Some(cap) => samples.min(cap.max(1)),
+        None => samples,
+    }
+}
+
 /// Samples per frame for Scene Plans: more in the first second, where
 /// entrances move fastest.
 pub(crate) fn plan_temporal_samples(center: f64) -> u32 {
